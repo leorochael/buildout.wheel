@@ -21,6 +21,9 @@ assert os.path.isfile(NAMESPACE_STUB_PATH)
 orig_distros_for_location = setuptools.package_index.distros_for_location
 
 
+WHEEL_BLACKLIST = set()
+
+
 def unpack_wheel(spec, dest):
     WheelInstaller(spec).install_into(dest)
 
@@ -126,6 +129,9 @@ def distros_for_location(location, basename, metadata=None):
     Here we override setuptools to give wheels a chance.
     """
     if basename.endswith('.whl'):
+        if basename in WHEEL_BLACKLIST:
+            logger.warn("ignoring blacklisted wheel: %s", basename)
+            return ()
         wi = WheelInstaller(basename)
         if wi.compatible:
             # It's a match. Treat it as a binary
@@ -137,10 +143,15 @@ def distros_for_location(location, basename, metadata=None):
 
 
 def load(buildout):
+    WHEEL_BLACKLIST.update(set(
+        buildout['buildout'].get('wheel-blacklist', '').splitlines()
+    ))
     setuptools.package_index.distros_for_location = distros_for_location
     buildout.old_unpack_wheel = zc.buildout.easy_install.UNPACKERS.get('.whl')
     zc.buildout.easy_install.UNPACKERS['.whl'] = unpack_wheel
     logger.debug('Patched in wheel support')
+    logger.debug("Blacklisting wheels:\n%s",
+                 "\n".join(sorted(WHEEL_BLACKLIST)))
 
 
 def unload(buildout):
